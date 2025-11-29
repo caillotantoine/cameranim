@@ -30,8 +30,6 @@ def cart2sph(x: float, y:float, z:float, debug=False) -> Tuple[float, float, flo
     inc = np.atan2(planDist, z)
     return (az, inc, dist)
 
-
-
 class Camera:
 
     def __init__(self, width:int, height:int, fov:float, imgCircSize:float, camType:CameraType):
@@ -45,7 +43,6 @@ class Camera:
         self.cy = int(height / 2.0)
 
         self.internalT = np.array([[0, 0, 1, 0], [-1, 0, 0, 0, ], [0, -1, 0, 0], [0, 0, 0, 1]]).T
-
 
         if self.camType == CameraType.PERSPECTIVE:
             self.f = float(self.imgCircSize) / (2.0 * np.tan(self.fov / 2.0))
@@ -91,12 +88,10 @@ class Camera:
         ptInFrame = self.projectInCamFrame(pt)
         ptx, pty, ptz = ptInFrame
         
-
         if self.camType == CameraType.EQUIRECTANGULAR:
             # TODO
             # certainement des atan2 avec ptx et ptz pour l'axe x et pty et ptz pour l'axe y
             return
-        
         
         az, inc, dist = cart2sph(ptx, pty, ptz, debug=debug)
         if debug:
@@ -148,13 +143,9 @@ class GifGenerator:
         )
 
 class Renderer:
-
     def __init__(self, cam:Camera):
         self.gif = GifGenerator()
         self.cam = cam
-        
-        
-
     
     def setStart(self, translation:Tuple[float, float, float], rotation:Tuple[float, float, float]):
         self.stx, self.sty, self.stz = translation
@@ -193,27 +184,31 @@ class Renderer:
 
             # ImageCircle in white
             cv2.circle(img, self.cam.getCenter(), self.cam.getImgCircRadius(), color=(255, 255, 255, 255), thickness=-1)
+            circle_mask = img.copy()
 
             for pt, c in pointcloud: # draw each point
                 try:
                     pointInImg, dist = self.cam.projector(pt)
-                    cv2.circle(img, pointInImg, int(ptSize/dist), color=c, thickness=-1)
+                    cv2.circle(img, pointInImg, int(ptSize/np.sqrt(dist)), color=c, thickness=-1)
                 except ValueError:
                     continue
+
+            # Cleanup what is outside image circle
+            mask = circle_mask[:,:,0] > 0
+            img[mask, 3] = 255
+            img[~mask, 3] = 0
 
             # circle around the image circle
             cv2.circle(img, self.cam.getCenter(), self.cam.getImgCircRadius()+2, color=(0, 0, 0, 255), thickness=3)
 
             # add the frame
             self.gif.add(img)
+            
 
         # save the gif
         self.gif.buildImage(pathToSave=pathToSave, duration=self.imgDuration, loop=0)
 
-
-
 if __name__ == "__main__":
-
     # Creation of a pointcloud
     pc = []
 
@@ -222,9 +217,9 @@ if __name__ == "__main__":
         d = 0
         pos = (0, 0, 0)
         while d < 6.0**2:
-            x = np.random.uniform(-30, 30)
-            y = np.random.uniform(-30, 30)
-            z = np.random.uniform(-30, 30)
+            x = np.random.uniform(-100, 100)
+            y = np.random.uniform(-100, 100)
+            z = np.random.uniform(-100, 100)
             d = x*x + y*y + z*z
             pos = (x, y, z)
 
@@ -234,9 +229,10 @@ if __name__ == "__main__":
         color += (255,)
         pc.append(((pos), (color)))
 
+    pc.sort(key=lambda item: np.linalg.norm(item[0]), reverse=True)
 
     ptSize = 100
-    dist = 2.0
+    dist = 3.0
 
     # Perspective camera
     cam_p = Camera(720, 720, 60, 712, CameraType.PERSPECTIVE)
@@ -253,12 +249,14 @@ if __name__ == "__main__":
 
     render = Renderer(cam_p)
     render.setStart((dist, 0.0, 0.0), (0.0, 0.0, 0.0))
-    render.setEnd((dist, dist, 0.0), (0.0, 0.0, np.deg2rad(30)))
+    render.setEnd((dist, dist, 0.0), (0.0, 0.0, np.deg2rad(10)))
     render.render(pc, ptSize, "persp_rotation_z.gif", duration=2)
-
 
     # Equidistant camera
     cam_ed = Camera(720, 720, 210, 712, CameraType.EQUIDISTANT)
+
+    pc = pc[::8]
+    ptSize /= 1.0
 
     render = Renderer(cam_ed)
     render.setStart((0.0, 0.0, 0.0), (0.0, 0.0, 0.0))
@@ -272,10 +270,8 @@ if __name__ == "__main__":
 
     render = Renderer(cam_ed)
     render.setStart((dist, 0.0, 0.0), (0.0, 0.0, 0.0))
-    render.setEnd((dist, dist, 0.0), (0.0, 0.0, np.deg2rad(30)))
+    render.setEnd((dist, dist, 0.0), (0.0, 0.0, np.deg2rad(10)))
     render.render(pc, ptSize, "equidist_rotation_z.gif", duration=2)
-
-
 
 ### GARBAGE:
 
